@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Reconnaissance Vocale + Audio</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .status.ok { color: green; }
+    .status.error { color: red; }
+    .info { color: blue; }
+    .error { color: red; }
+    #logs div { margin-bottom: 5px; }
+    #transcription { min-height: 50px; margin-top: 10px; border: 1px solid #ccc; padding: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Test Reconnaissance Vocale + Audio</h1>
+  <p id="compat-status">Vérification compatibilité...</p>
+  <button id="start-btn" disabled>Démarrer</button>
+  <button id="stop-btn" disabled>Arrêter</button>
+  <button id="clear-logs">Effacer les logs</button>
+
+  <h2>Transcription :</h2>
+  <div id="transcription"></div>
+
+  <h2>Logs :</h2>
+  <div id="logs"></div>
+<a href="fichiertest"> fichier test 1</a>
+  <script>
+    let recognition = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+
+    const compatStatus = document.getElementById('compat-status');
+    const startBtn = document.getElementById('start-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    const transcriptionDiv = document.getElementById('transcription');
+    const logsDiv = document.getElementById('logs');
+    const clearBtn = document.getElementById('clear-logs');
+
+    function log(msg, type='info') {
+      const span = document.createElement('div');
+      span.className = type === 'error' ? 'error' : 'info';
+      span.textContent = msg;
+      logsDiv.appendChild(span);
+      console.log(msg);
+    }
+
+    // Vérification compatibilité
+    let speechSupported = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+    let mediaSupported = ('MediaRecorder' in window && navigator.mediaDevices);
+
+    if (!speechSupported && !mediaSupported) {
+      compatStatus.textContent = "? Ni la reconnaissance vocale ni l'enregistrement audio ne sont supportés sur ce navigateur.";
+      compatStatus.className = 'status error';
+    } else {
+      compatStatus.textContent = "? Compatibilité trouvée. Cliquez sur Démarrer pour tester.";
+      compatStatus.className = 'status ok';
+      startBtn.disabled = false;
+    }
+
+    // Vérification permissions micro
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'microphone' })
+        .then(permissionStatus => {
+          log("État initial de la permission micro : " + permissionStatus.state);
+          permissionStatus.onchange = () => log("Changement de permission micro : " + permissionStatus.state);
+        })
+        .catch(err => log("Impossible de vérifier la permission micro : " + err.message, 'error'));
+    }
+
+    startBtn.addEventListener('click', async () => {
+      transcriptionDiv.textContent = '';
+      logsDiv.textContent = '';
+
+      // Reconnaissance vocale
+      if (speechSupported) {
+        recognition = new (window.webkitSpeechRecognition || window.SpeechRecognition)();
+        recognition.lang = 'fr-FR';
+        recognition.continuous = true;
+
+        recognition.onstart = () => log("Reconnaissance vocale démarrée.");
+        recognition.onaudiostart = () => log("Audio capture démarrée.");
+        recognition.onsoundstart = () => log("Son détecté.");
+        recognition.onspeechstart = () => log("Début de la parole.");
+        recognition.onspeechend = () => log("Fin de la parole.");
+        recognition.onsoundend = () => log("Fin du son.");
+        recognition.onaudioend = () => log("Fin de l'audio.");
+        recognition.onend = () => log("Reconnaissance vocale terminée.");
+        recognition.onnomatch = () => log("Aucun résultat reconnu.");
+        recognition.onerror = (event) => log("Erreur reconnaissance vocale : " + event.error, 'error');
+
+        recognition.onresult = (event) => {
+          console.log(event);
+          let text = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            text += event.results[i][0].transcript + ' ';
+            log(`Résultat #${i}: ${event.results[i][0].transcript} (confiance: ${event.results[i][0].confidence})`);
+          }
+          transcriptionDiv.textContent = text;
+        };
+
+        recognition.start();
+      } else {
+        log("Reconnaissance vocale non supportée.", 'error');
+      }
+
+      // Enregistrement audio
+      if (mediaSupported) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.onstart = () => log("MediaRecorder démarré");
+          mediaRecorder.onpause = () => log("MediaRecorder en pause");
+          mediaRecorder.onresume = () => log("MediaRecorder repris");
+          mediaRecorder.onstop = () => {
+            log("MediaRecorder stoppé.");
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const audioURL = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioURL);
+            audio.controls = true;
+            logsDiv.appendChild(audio);
+          };
+          mediaRecorder.onerror = (e) => log("Erreur MediaRecorder : " + e.error, 'error');
+
+          mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+
+          mediaRecorder.start();
+          log("Enregistrement audio démarré.");
+        } catch (err) {
+          log("Erreur d'accès au micro : " + err.message, 'error');
+          console.error(err);
+        }
+      } else {
+        log("Enregistrement audio non supporté.", 'error');
+      }
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+    });
+
+    stopBtn.addEventListener('click', () => {
+      if (recognition) {
+        recognition.stop();
+        log("Reconnaissance vocale arrêtée.");
+      }
+      if (mediaRecorder) {
+        mediaRecorder.stop();
+      }
+      stopBtn.disabled = true;
+      startBtn.disabled = false;
+    });
+
+    clearBtn.addEventListener('click', () => {
+      logsDiv.textContent = '';
+      transcriptionDiv.textContent = '';
+    });
+  </script>
+</body>
+</html>
