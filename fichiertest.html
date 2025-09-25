@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Reconnaissance Vocale & Enregistrement</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    .status {
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+    }
+    .ok { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    .info { background: #d1ecf1; color: #0c5460; }
+    button {
+      padding: 10px 15px;
+      margin: 5px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #transcription, #logs {
+      border: 1px solid #ccc;
+      min-height: 50px;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 5px;
+      background: #f9f9f9;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Test Reconnaissance Vocale & Enregistrement Audio</h1>
+  <p>Ce fichier vérifie la compatibilité du navigateur avec l'API Web Speech et MediaRecorder.</p>
+
+  <!-- Zone d'état -->
+  <div id="compat-status" class="status info">Vérification en cours...</div>
+
+  <!-- Boutons -->
+  <button id="start-btn" disabled>Démarrer</button>
+  <button id="stop-btn" disabled>Arrèter</button>
+
+  <!-- Zones de résultats -->
+  <h3>Transcription :</h3>
+  <div id="transcription"></div>
+
+  <h3>Logs :</h3>
+  <div id="logs"></div>
+
+<script>
+/**
+ * Test Reconnaissance vocale + Enregistrement audio
+ * Ce script vérifie :
+ * - Support de SpeechRecognition
+ * - Support de MediaRecorder
+ * - Accès au micro
+ * - Affichage des résultats et logs
+ */
+
+let recognition = null;
+let mediaRecorder = null;
+let audioChunks = [];
+
+// Sélecteurs
+const compatStatus = document.getElementById('compat-status');
+const startBtn = document.getElementById('start-btn');
+const stopBtn = document.getElementById('stop-btn');
+const transcriptionDiv = document.getElementById('transcription');
+const logsDiv = document.getElementById('logs');
+
+// Utilitaire pour logs
+function log(msg, type='info') {
+  const span = document.createElement('div');
+  span.className = type === 'error' ? 'error' : 'info';
+  span.textContent = msg;
+  logsDiv.appendChild(span);
+}
+
+// Vérification compatibilité
+let speechSupported = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+let mediaSupported = ('MediaRecorder' in window && navigator.mediaDevices);
+
+if (!speechSupported && !mediaSupported) {
+  compatStatus.textContent = "?? Ni la reconnaissance vocale ni l'enregistrement audio ne sont supportés sur ce navigateur.";
+  compatStatus.className = 'status error';
+} else {
+  compatStatus.textContent = "? Compatibilité trouvée. Cliquez sur Démarrer pour tester.";
+  compatStatus.className = 'status ok';
+  startBtn.disabled = false;
+}
+
+// Initialisation des API lors du clic sur start
+startBtn.addEventListener('click', async () => {
+  transcriptionDiv.textContent = '';
+  logsDiv.textContent = '';
+
+  if (speechSupported) {
+    recognition = new (window.webkitSpeechRecognition || window.SpeechRecognition)();
+    recognition.lang = 'fr-FR';
+    recognition.continuous = true;
+
+    recognition.onresult = (event) => {
+      let text = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        text += event.results[i][0].transcript + ' ';
+      }
+      transcriptionDiv.textContent = text;
+    };
+
+    recognition.onerror = (event) => {
+      log("Erreur reconnaissance vocale : " + event.error, 'error');
+    };
+
+    recognition.start();
+    log("Reconnaissance vocale démarrée.");
+  } else {
+    log("Reconnaissance vocale non supportée sur cet appareil.", 'error');
+  }
+
+  if (mediaSupported) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        log("Enregistrement audio arrété.");
+        // Ici on pourrait créer un blob audio :
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioURL = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioURL);
+        audio.controls = true;
+        logsDiv.appendChild(audio);
+      };
+
+      mediaRecorder.start();
+      log("Enregistrement audio démarré.");
+    } catch (err) {
+      log("Erreur d'accès au micro : " + err.message, 'error');
+    }
+  } else {
+    log("Enregistrement audio non supporté sur cet appareil.", 'error');
+  }
+
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+});
+
+stopBtn.addEventListener('click', () => {
+  if (recognition) {
+    recognition.stop();
+    log("Reconnaissance vocale arrétée.");
+  }
+  if (mediaRecorder) {
+    mediaRecorder.stop();
+  }
+  stopBtn.disabled = true;
+  startBtn.disabled = false;
+});
+</script>
+
+</body>
+</html>
