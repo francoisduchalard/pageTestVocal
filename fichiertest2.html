@@ -2,138 +2,102 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Test Reconnaissance Vocale + Audio (Mobile & PC)</title>
+  <title>Test Audio + Reconnaissance Vocale</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    .status.ok { color: green; }
-    .status.error { color: red; }
-    .info { color: blue; }
-    .error { color: red; }
+    button { margin: 5px; padding: 10px; }
     #logs div { margin-bottom: 5px; }
     #transcription { min-height: 50px; margin-top: 10px; border: 1px solid #ccc; padding: 5px; }
   </style>
 </head>
 <body>
-  <h1>Test Reconnaissance Vocale + Audio</h1>
-  <p id="compat-status">Vérification compatibilité...</p>
-  <button id="start-btn" disabled>Démarrer</button>
+  <h1>Test Audio + Reconnaissance Vocale</h1>
+
+  <button id="start-btn">Démarrer</button>
   <button id="stop-btn" disabled>Arrêter</button>
-  <button id="clear-logs">Effacer les logs</button>
 
   <h2>Transcription :</h2>
   <div id="transcription"></div>
 
-  <h2>Logs :</h2>
+  <h2>Logs / Audio :</h2>
   <div id="logs"></div>
 
   <script>
-    let recognition = null;
-    let mediaRecorder = null;
-    let audioChunks = [];
-
-    const compatStatus = document.getElementById('compat-status');
     const startBtn = document.getElementById('start-btn');
     const stopBtn = document.getElementById('stop-btn');
-    const transcriptionDiv = document.getElementById('transcription');
     const logsDiv = document.getElementById('logs');
-    const clearBtn = document.getElementById('clear-logs');
+    const transcriptionDiv = document.getElementById('transcription');
 
-    function log(msg, type='info') {
-      const span = document.createElement('div');
-      span.className = type === 'error' ? 'error' : 'info';
-      span.textContent = msg;
-      logsDiv.appendChild(span);
-      console.log(msg);
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recognition = null;
+
+    function log(msg) {
+      const div = document.createElement('div');
+      div.textContent = msg;
+      logsDiv.appendChild(div);
     }
 
-    // Vérification compatibilité
-    const mediaSupported = ('MediaRecorder' in window && navigator.mediaDevices);
-    if (!mediaSupported) {
-      compatStatus.textContent = "❌ Enregistrement audio non supporté sur ce navigateur.";
-      compatStatus.className = 'status error';
+    // Vérifie si la reconnaissance vocale est supportée
+    if ('webkitSpeechRecognition' in window) {
+      recognition = new webkitSpeechRecognition();
+      recognition.lang = 'fr-FR';
+      recognition.continuous = true;
+
+      recognition.onresult = (event) => {
+        let texte = '';
+        for (let i = 0; i < event.results.length; i++) {
+          texte += event.results[i][0].transcript + ' ';
+        }
+        transcriptionDiv.textContent = texte;
+      };
+
+      recognition.onerror = (e) => log("Erreur reconnaissance vocale : " + e.error);
     } else {
-      compatStatus.textContent = "✅ Compatibilité trouvée. Cliquez sur Démarrer pour tester.";
-      compatStatus.className = 'status ok';
-      startBtn.disabled = false;
-    }
-
-    // Vérification permissions micro
-    if (navigator.permissions && navigator.permissions.query) {
-      navigator.permissions.query({ name: 'microphone' })
-        .then(permissionStatus => {
-          log("État initial de la permission micro : " + permissionStatus.state);
-          permissionStatus.onchange = () => log("Changement de permission micro : " + permissionStatus.state);
-        })
-        .catch(err => log("Impossible de vérifier la permission micro : " + err.message, 'error'));
-    }
-
-    async function transcribeAudio(blob) {
-      // Exemple : envoi à une API de transcription (Whisper ou autre)
-      // Remplacer l'URL '/transcribe' par ton endpoint serveur
-      try {
-        const formData = new FormData();
-        formData.append('file', blob, 'audio.webm');
-
-        log("Envoi de l'audio pour transcription...");
-        const response = await fetch('/transcribe', { method: 'POST', body: formData });
-        if (!response.ok) throw new Error("Erreur lors de la transcription");
-
-        const data = await response.json();
-        transcriptionDiv.textContent = data.transcript;
-        log("Transcription reçue : " + data.transcript);
-      } catch (err) {
-        log("Erreur transcription : " + err.message, 'error');
-      }
+      log("Reconnaissance vocale non supportée sur ce navigateur (Chrome recommandé).");
     }
 
     startBtn.addEventListener('click', async () => {
-      transcriptionDiv.textContent = '';
-      logsDiv.textContent = '';
-
       // Enregistrement audio
-      if (mediaSupported) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          mediaRecorder = new MediaRecorder(stream);
-          audioChunks = [];
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
 
-          mediaRecorder.onstart = () => log("MediaRecorder démarré");
-          mediaRecorder.onstop = async () => {
-            log("MediaRecorder stoppé.");
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            const audioURL = URL.createObjectURL(audioBlob);
-            const audio = new Audio(audioURL);
-            audio.controls = true;
-            logsDiv.appendChild(audio);
+        mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const audioURL = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioURL);
+          audio.controls = true;
+          logsDiv.appendChild(audio);
+          log("Enregistrement terminé.");
+        };
 
-            // Envoi pour transcription
-            await transcribeAudio(audioBlob);
-          };
-          mediaRecorder.onerror = (e) => log("Erreur MediaRecorder : " + e.error, 'error');
-          mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+        mediaRecorder.start();
+        log("Enregistrement audio démarré.");
 
-          mediaRecorder.start();
-          log("Enregistrement audio démarré.");
-        } catch (err) {
-          log("Erreur d'accès au micro : " + err.message, 'error');
-        }
+        // Reconnaissance vocale
+        if (recognition) recognition.start();
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+
+      } catch (err) {
+        log("Erreur d'accès au micro : " + err.message);
       }
-
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
     });
 
     stopBtn.addEventListener('click', () => {
       if (mediaRecorder) mediaRecorder.stop();
-      stopBtn.disabled = true;
-      startBtn.disabled = false;
-    });
+      if (recognition) recognition.stop();
 
-    clearBtn.addEventListener('click', () => {
-      logsDiv.textContent = '';
-      transcriptionDiv.textContent = '';
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      log("Enregistrement et transcription arrêtés.");
     });
   </script>
 </body>
 </html>
+
 
