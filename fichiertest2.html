@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Test Audio + Reconnaissance Vocale</title>
+  <title>Audio + Transcription avec OpenAI</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     button { margin: 5px; padding: 10px; }
@@ -11,8 +11,10 @@
   </style>
 </head>
 <body>
-  <h1>Test Audio + Reconnaissance Vocale</h1>
+  <h1>Enregistrement Audio + Transcription</h1>
 
+  <input type="text" id="api-key" placeholder="Ta clé OpenAI">
+  <br>
   <button id="start-btn">Démarrer</button>
   <button id="stop-btn" disabled>Arrêter</button>
 
@@ -27,10 +29,10 @@
     const stopBtn = document.getElementById('stop-btn');
     const logsDiv = document.getElementById('logs');
     const transcriptionDiv = document.getElementById('transcription');
+    const apiKeyInput = document.getElementById('api-key');
 
     let mediaRecorder = null;
     let audioChunks = [];
-    let recognition = null;
 
     function log(msg) {
       const div = document.createElement('div');
@@ -38,47 +40,61 @@
       logsDiv.appendChild(div);
     }
 
-    // Vérifie si la reconnaissance vocale est supportée
-    if ('webkitSpeechRecognition' in window) {
-      recognition = new webkitSpeechRecognition();
-      recognition.lang = 'fr-FR';
-      recognition.continuous = true;
+    async function transcribeAudio(blob) {
+      const apiKey = apiKeyInput.value.trim();
+      if (!apiKey) {
+        log("⚠️ Renseigne ta clé OpenAI pour la transcription.");
+        return;
+      }
 
-      recognition.onresult = (event) => {
-        let texte = '';
-        for (let i = 0; i < event.results.length; i++) {
-          texte += event.results[i][0].transcript + ' ';
-        }
-        transcriptionDiv.textContent = texte;
-      };
+      const formData = new FormData();
+      formData.append("file", blob, "audio.webm");
+      formData.append("model", "whisper-1");
 
-      recognition.onerror = (e) => log("Erreur reconnaissance vocale : " + e.error);
-    } else {
-      log("Reconnaissance vocale non supportée sur ce navigateur (Chrome recommandé).");
+      log("Envoi de l'audio à OpenAI pour transcription...");
+
+      try {
+        const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}` },
+          body: formData
+        });
+
+        if (!response.ok) throw new Error("Erreur API OpenAI");
+
+        const data = await response.json();
+        transcriptionDiv.textContent = data.text;
+        log("Transcription reçue ✅");
+
+      } catch (err) {
+        log("Erreur transcription : " + err.message);
+      }
     }
 
     startBtn.addEventListener('click', async () => {
-      // Enregistrement audio
+      transcriptionDiv.textContent = '';
+      logsDiv.textContent = '';
+
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = [];
 
         mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-        mediaRecorder.onstop = () => {
+        mediaRecorder.onstop = async () => {
           const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
           const audioURL = URL.createObjectURL(audioBlob);
           const audio = new Audio(audioURL);
           audio.controls = true;
           logsDiv.appendChild(audio);
           log("Enregistrement terminé.");
+
+          // Envoi pour transcription
+          await transcribeAudio(audioBlob);
         };
 
         mediaRecorder.start();
         log("Enregistrement audio démarré.");
-
-        // Reconnaissance vocale
-        if (recognition) recognition.start();
 
         startBtn.disabled = true;
         stopBtn.disabled = false;
@@ -90,14 +106,9 @@
 
     stopBtn.addEventListener('click', () => {
       if (mediaRecorder) mediaRecorder.stop();
-      if (recognition) recognition.stop();
-
-      startBtn.disabled = false;
       stopBtn.disabled = true;
-      log("Enregistrement et transcription arrêtés.");
+      startBtn.disabled = false;
     });
   </script>
 </body>
 </html>
-
-
