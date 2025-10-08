@@ -72,6 +72,8 @@ let audioChunks = [];
 const compatStatus = document.getElementById('compat-status');
 const startBtn = document.getElementById('start-btn');
 const stopBtn = document.getElementById('stop-btn');
+const alerteBtn = document.getElementById('alerte-btn');
+alerteBtn.disabled = false; // si tu veux le rendre actif
 const transcriptionDiv = document.getElementById('transcription');
 const logsDiv = document.getElementById('logs');
 
@@ -169,13 +171,14 @@ stopBtn.addEventListener('click', () => {
   stopBtn.disabled = true;
   startBtn.disabled = false;
 });
-  alerte-btn.addEventListener('click', () => {
-    alert('test de d'alerte js');
-  }
+ alerteBtn.addEventListener('click', () => {
+  alert("test d'alerte JS");
+});
 </script>
 
 </body>
 </html>
+
 
 
 
